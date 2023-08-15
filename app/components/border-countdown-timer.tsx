@@ -16,7 +16,7 @@
 
 "use client"
 
-import { Game, gameStates } from "@/app/types";
+import { Game } from "@/app/types";
 import { DocumentReference, Timestamp } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { timeCalculator } from "../lib/time-calculator";
