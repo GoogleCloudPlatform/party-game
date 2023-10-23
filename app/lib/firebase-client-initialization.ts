@@ -34,7 +34,7 @@ if (typeof window !== 'undefined') {
   // @ts-expect-error
   if (location.hostname === 'localhost') self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
   appCheck = initializeAppCheck(app, {
-    provider: new ReCaptchaEnterpriseProvider('6Lc3JP8nAAAAAPrX4s-HwUT8L-k_aMtbKGhJEq_0'),
+    provider: new ReCaptchaEnterpriseProvider('6LdNE8MoAAAAAH_X2aKRKbIwKGGkZLsUmLKCthRy'),
     isTokenAutoRefreshEnabled: true, // Set to true to allow auto-refresh.
   });
 }
