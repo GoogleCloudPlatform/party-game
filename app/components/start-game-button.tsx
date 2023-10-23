@@ -14,32 +14,27 @@
  * limitations under the License.
  */
 
-"use client"
+'use client';
 
-import { DocumentReference } from "firebase/firestore";
-import useFirebaseAuthentication from "@/app/hooks/use-firebase-authentication";
-import "./big-color-border-button.css";
-import BigColorBorderButton from "@/app/components/big-color-border-button";
+import './big-color-border-button.css';
+import BigColorBorderButton from '@/app/components/big-color-border-button';
+import {nudgeGameAction} from '@/app/actions/nudge-game';
+import {getTokens} from '@/app/lib/client-token-generator';
+import {gameStates} from '../types';
 
-export default function StartGameButton({gameRef}: {gameRef: DocumentReference}) {
-  const authUser = useFirebaseAuthentication();
-  const onStartGameClick = async (gameRef: DocumentReference) => {
-    const token = await authUser.getIdToken();
-    await fetch('/api/start-game', {
-      method: 'POST',
-      body: JSON.stringify({ gameId: gameRef.id }),
-      headers: {
-        Authorization: token,
-      }
-    })
-    .catch(error => {
-      console.error({ error })
-    });
-  }
+export default function StartGameButton({gameId}: {gameId: string}) {
+  const onStartGameClick = async () => {
+    const tokens = await getTokens();
+    const desiredState = {
+      state: gameStates.AWAITING_PLAYER_ANSWERS,
+      currentQuestionIndex: 0,
+    };
+    nudgeGameAction({gameId, desiredState, tokens});
+  };
 
   return (
-    <BigColorBorderButton onClick={() => onStartGameClick(gameRef)}>
+    <BigColorBorderButton onClick={onStartGameClick}>
       Start Game Now ►
     </BigColorBorderButton>
-  )
+  );
 }

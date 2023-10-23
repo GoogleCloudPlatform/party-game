@@ -14,40 +14,57 @@
  * limitations under the License.
  */
 
-import { useEffect, useState } from "react";
-import { db } from "@/app/lib/firebase-client-initialization"
-import { Game, emptyGame, gameStates } from "@/app/types";
-import { doc, onSnapshot } from "firebase/firestore";
-import { usePathname } from "next/navigation";
-
+import {useEffect, useState} from 'react';
+import {db} from '@/app/lib/firebase-client-initialization';
+import {Game, GameSchema, emptyGame, gameStates} from '@/app/types';
+import {doc, onSnapshot} from 'firebase/firestore';
+import {usePathname} from 'next/navigation';
+import useFirebaseAuthentication from './use-firebase-authentication';
+import {joinGameAction} from '@/app/actions/join-game';
+import {getTokens} from '@/app/lib/client-token-generator';
 
 const useGame = () => {
   const pathname = usePathname();
   const gameId = pathname.split('/')[2];
-  const gameRef = doc(db, "games", gameId);
   const [game, setGame] = useState<Game>(emptyGame);
-  const [error, setErrorMessage] = useState<string>("");
+  const [error, setErrorMessage] = useState<string>('');
+  const authUser = useFirebaseAuthentication();
 
   useEffect(() => {
+    const joinGame = async () => {
+      const tokens = await getTokens();
+      joinGameAction({gameId, tokens});
+    };
+    if (game.leader.uid && authUser.uid && game.leader.uid !== authUser.uid) {
+      joinGame();
+    }
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authUser.getIdToken, authUser.uid, game.leader.uid]);
+
+  useEffect(() => {
+    const gameRef = doc(db, 'games', gameId);
     const unsubscribe = onSnapshot(gameRef, (doc) => {
-      const game = doc.data() as Game;
-      if (game) {
+      try {
+        const game = GameSchema.parse(doc.data());
         setGame(game);
-      } else {
-        setErrorMessage(`Game ${gameId} was not found.`)
+      } catch (error) {
+        setErrorMessage(`Game ${gameId} was not found.`);
       }
     });
-    return unsubscribe;
-  }, [gameId, gameRef])
+
+    return () => {
+      unsubscribe();
+    };
+  }, [authUser.uid, gameId]);
 
   return {
-    gameRef,
     gameId,
     game,
     isShowingQuestion: game.state === gameStates.AWAITING_PLAYER_ANSWERS || game.state === gameStates.SHOWING_CORRECT_ANSWERS,
     currentQuestion: game.questions[game.currentQuestionIndex],
     error,
-  }
-}
+  };
+};
 
 export default useGame;

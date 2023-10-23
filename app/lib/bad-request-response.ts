@@ -14,23 +14,11 @@
  * limitations under the License.
  */
 
-'use client';
+import {NextResponse} from 'next/server';
 
-import Link from 'next/link';
-import useActiveGameList from '@/app/hooks/use-active-game-list';
-
-export default function GameList() {
-  const {activeGameList} = useActiveGameList();
-
-  return (
-    <div className="p-2 mx-auto max-w-2xl">
-      {activeGameList.length > 0 ? activeGameList.map((game) => (
-        <div key={game.id} className={`border mt-5 p-2 rounded-md`}>
-          <Link href={`/game/${game.id}`}>Join Game - {game.id}</Link>
-        </div>
-      )) : (<center className="mt-20">
-        There are currently no games in progress.
-      </center>)}
-    </div>
+export const badRequestResponse = ({errorMessage}: { errorMessage: string }) => {
+  return new NextResponse(
+      JSON.stringify({success: false, message: errorMessage}),
+      {status: 400, headers: {'content-type': 'application/json'}}
   );
-}
+};

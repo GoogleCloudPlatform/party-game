@@ -14,44 +14,67 @@
  * limitations under the License.
  */
 
-"use client"
+'use client';
 
-import useFirebaseAuthentication from "@/app/hooks/use-firebase-authentication";
-import { useRouter } from 'next/navigation'
-import { useEffect, useState } from "react";
-import BigColorBorderButton from "./big-color-border-button";
-import { gameFormValidator } from "../lib/game-form-validator";
+import {useRouter} from 'next/navigation';
+import {useEffect, useState} from 'react';
+import BigColorBorderButton from './big-color-border-button';
+import {QuestionAdvancement, QuestionAdvancementEnum, TimePerAnswerSchema, TimePerQuestionSchema, questionAdvancements} from '@/app/types';
+import {createGameAction} from '@/app/actions/create-game';
+import {z} from 'zod';
+import {getTokens} from '@/app/lib/client-token-generator';
+
+const {MANUAL, AUTOMATIC} = questionAdvancements;
+const defaultTimePerQuestion = 60;
+const defaultTimePerAnswer = 20;
 
 export default function CreateGameForm() {
-  const authUser = useFirebaseAuthentication();
-  const defaultTimePerQuestion = 60;
-  const defaultTimePerAnswer = 20;
-  const [timePerQuestion, setTimePerQuestion] = useState<number>(defaultTimePerQuestion);
-  const [timePerAnswer, setTimePerAnswer] = useState<number>(defaultTimePerAnswer);
-  const [errorMessage, setErrorMessage] = useState<string>('');
-  const router = useRouter()
+  const [questionAdvancement, setQuestionAdvancement] = useState<QuestionAdvancement>(MANUAL);
+  const [timePerQuestionInputValue, setTimePerQuestionInputValue] = useState<string>(defaultTimePerQuestion.toString());
+  const [timePerAnswerInputValue, setTimePerAnswerInputValue] = useState<string>(defaultTimePerAnswer.toString());
+  const timePerQuestion = timePerQuestionInputValue ? parseInt(timePerQuestionInputValue) : -0.5;
+  const timePerAnswer = timePerAnswerInputValue ? parseInt(timePerAnswerInputValue) : -0.5;
+  const [timePerQuestionError, setTimePerQuestionError] = useState<string>('');
+  const [timePerAnswerError, setTimePerAnswerError] = useState<string>('');
+  const [submissionErrorMessage, setSubmissionErrorMessage] = useState<string>('');
+  const router = useRouter();
   const onCreateGameSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    const token = await authUser.getIdToken();
     try {
-      const res = await fetch('/api/create-game', {
-        method: 'POST',
-        body: JSON.stringify({ timePerQuestion, timePerAnswer }),
-        headers: {
-          Authorization: token,
-        }
-      })
-      const response = await res.json();
-      if (!response.gameId) throw new Error('no gameId returned in the response')
-      router.push(`/game/${response.gameId}/presenter`)
+      const gameSettings = {timePerQuestion, timePerAnswer, questionAdvancement};
+      const tokens = await getTokens();
+      const response = await createGameAction({gameSettings, tokens});
+      router.push(`/game/${response.gameId}`);
     } catch (error) {
-      setErrorMessage('There was an error handling the request.');
+      setSubmissionErrorMessage('There was an error handling the request.');
     }
-  }
+  };
 
   useEffect(() => {
-    setErrorMessage(gameFormValidator({ timePerQuestion, timePerAnswer }));
-  }, [timePerAnswer, timePerQuestion])
+    setSubmissionErrorMessage('');
+  }, [timePerQuestion, timePerAnswer]);
+
+  useEffect(() => {
+    try {
+      TimePerQuestionSchema.parse(timePerQuestion);
+      setTimePerQuestionError('');
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        setTimePerQuestionError(error.issues[0].message);
+      }
+    }
+  }, [timePerQuestion]);
+
+  useEffect(() => {
+    try {
+      TimePerAnswerSchema.parse(timePerAnswer);
+      setTimePerAnswerError('');
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        setTimePerAnswerError(error.issues[0].message);
+      }
+    }
+  }, [timePerAnswer]);
 
   return (
     <div className="w-full max-w-lg mx-auto border-8 border-r-[var(--google-cloud-blue)] border-t-[var(--google-cloud-red)] border-b-[var(--google-cloud-green)] border-l-[var(--google-cloud-yellow)]">
@@ -63,26 +86,48 @@ export default function CreateGameForm() {
           <input
             className="shadow appearance-none border rounded w-full py-2 px-3 leading-tight focus:outline-none focus:shadow-outline"
             id="timePerQuestion"
-            type="number"
-            value={timePerQuestion}
-            onChange={(event) => setTimePerQuestion(parseInt(event.target.value))}
+            type="text"
+            inputMode="numeric"
+            value={timePerQuestionInputValue}
+            onChange={(event) => setTimePerQuestionInputValue(event.target.value)}
             placeholder={defaultTimePerQuestion.toString()}
           />
+          <p className="text-red-500 text-xs italic">{timePerQuestionError ? timePerQuestionError : <>&nbsp;</>}</p>
         </div>
         <div className="mb-6">
-          <label className="block text-sm font-bold mb-2" htmlFor="timePerAnswer">
-            Time (in seconds) to review the answers
+          <label className="block text-sm font-bold mb-2" htmlFor="questionAdvancement">
+            Advancement to the next question
           </label>
-          <input
-            className="shadow appearance-none border rounded w-full py-2 px-3 mb-3 leading-tight focus:outline-none focus:shadow-outline"
-            id="timePerAnswer"
-            type="number"
-            value={timePerAnswer}
-            onChange={(event) => setTimePerAnswer(parseInt(event.target.value))}
-            placeholder={defaultTimePerAnswer.toString()}
-          />
-          <p className="text-red-500 text-xs italic">{errorMessage}</p>
+          <select
+          // shadow appearance-none border rounded w-full py-2 px-3 mb-3 leading-tight focus:outline-none focus:shadow-outline
+            className="shadow border rounded w-full py-2 px-3 mb-3 leading-tight focus:outline-none focus:shadow-outline"
+            value={questionAdvancement}
+            onChange={(event) => {
+              setQuestionAdvancement(QuestionAdvancementEnum.parse(event.target.value));
+            }}
+          >
+            <option value={MANUAL}>Manually</option>
+            <option value={AUTOMATIC}>Automatically on a timer</option>
+          </select>
         </div>
+        {questionAdvancement === AUTOMATIC && (<>
+          <div className="mb-6">
+            <label className="block text-sm font-bold mb-2" htmlFor="timePerAnswer">
+              Time (in seconds) to review the answers
+            </label>
+            <input
+              className="shadow appearance-none border rounded w-full py-2 px-3 mb-3 leading-tight focus:outline-none focus:shadow-outline"
+              id="timePerAnswer"
+              type="text"
+              inputMode="numeric"
+              value={timePerAnswerInputValue}
+              onChange={(event) => setTimePerAnswerInputValue(event.target.value)}
+              placeholder={defaultTimePerAnswer.toString()}
+            />
+            <p className="text-red-500 text-xs italic">{timePerAnswerError ? timePerAnswerError : <>&nbsp;</>}</p>
+          </div>
+        </>)}
+        <p className="text-red-500 text-xs italic">{submissionErrorMessage ? submissionErrorMessage : <>&nbsp;</>}</p>
         <center>
           <BigColorBorderButton type="submit">
             Create Game
@@ -90,5 +135,5 @@ export default function CreateGameForm() {
         </center>
       </form>
     </div>
-  )
+  );
 }

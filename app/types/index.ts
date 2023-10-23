@@ -14,73 +14,108 @@
  * limitations under the License.
  */
 
-export type Answer = {
-  isCorrect: boolean;
-  isSelected: boolean;
-  text: string;
-}
+import {z} from 'zod';
 
-export type Question = {
-  answers: Array<Answer>;
-  prompt: string;
-  explanation: string;
-  playerGuesses: {
-    [key: string]: Boolean[];
-  };
-}
+export const GameIdSchema = z.string();
 
-export const emptyQuestion: Question = {
-  answers: [],
-  prompt: '',
-  explanation: '',
-  playerGuesses: {},
-};
+export const GameIdObjectSchema = z.object({gameId: GameIdSchema});
 
-export const gameStates = {
-  NOT_STARTED: 'NOT_STARTED',
-  SHOWING_CORRECT_ANSWERS: 'SHOWING_CORRECT_ANSWERS',
-  AWAITING_PLAYER_ANSWERS: 'AWAITING_PLAYER_ANSWERS',
-  GAME_OVER: 'GAME_OVER',
-} as const;
+export const AnswerSelectionSchema = z.array(z.boolean());
 
-export type GameState = (typeof gameStates)[keyof typeof gameStates];
+export const AnswerSelectionWithGameIdSchema = z.object({
+  gameId: GameIdSchema,
+  answerSelection: AnswerSelectionSchema,
+});
 
-export type Player = {
-  uid: string;
-  displayName: string;
-}
+export const TimePerQuestionSchema = z.number({invalid_type_error: 'Time per question must be a number'}).int().max(600, 'Time per question must be 600 or less.').min(10, 'Time per question must be at least 10.');
+export const TimePerAnswerSchema = z.number({invalid_type_error: 'Time per answer must be a number'}).int().max(600, 'Time per answer must be 600 or less.').min(5, 'Time per answer must be at least 5.');
 
-export const emptyPlayer: Player = {
+
+export const questionAdvancementOptionDetails = [
+  {
+    type: 'MANUAL',
+    description: 'Manually advance to the next question.',
+    shortName: 'Manual',
+    automaticallyAdvanceToNextQuestion: false,
+  },
+  {
+    type: 'AUTOMATIC',
+    description: 'Automatically advance question on a timer.',
+    shortName: 'Automatic',
+    automaticallyAdvanceToNextQuestion: true,
+  },
+] as const;
+const questionAdvancementOptions = ['MANUAL', 'AUTOMATIC'] as const;
+export const QuestionAdvancementEnum = z.enum(questionAdvancementOptions);
+export const questionAdvancements = QuestionAdvancementEnum.Values;
+export type QuestionAdvancement = z.infer<typeof QuestionAdvancementEnum>;
+
+export const GameSettingsSchema = z.object({
+  timePerQuestion: TimePerQuestionSchema,
+  timePerAnswer: TimePerAnswerSchema,
+  questionAdvancement: QuestionAdvancementEnum,
+});
+export type GameSettings = z.infer<typeof GameSettingsSchema>;
+
+const AnswerSchema = z.object({
+  isCorrect: z.boolean(),
+  isSelected: z.boolean().default(false),
+  text: z.string(),
+});
+
+export const QuestionSchema = z.object({
+  answers: z.array(AnswerSchema).min(1).max(4),
+  prompt: z.string(),
+  explanation: z.string(),
+  playerGuesses: z.record(z.string(), z.array(z.boolean())).default({}),
+});
+export type Question = z.infer<typeof QuestionSchema>;
+
+const gameStatesOptions = ['NOT_STARTED', 'SHOWING_CORRECT_ANSWERS', 'AWAITING_PLAYER_ANSWERS', 'GAME_OVER'] as const;
+const GameStateEnum = z.enum(gameStatesOptions);
+export const gameStates = GameStateEnum.Values;
+
+export const GameStateUpdateSchema = z.object({
+  state: GameStateEnum,
+  currentQuestionIndex: z.number().int().nonnegative(),
+});
+export type GameStateUpdate = z.infer<typeof GameStateUpdateSchema>;
+
+export const LeaderSchema = z.object({
+  uid: z.string(),
+  displayName: z.string(),
+});
+const emptyLeader = LeaderSchema.parse({
   uid: '',
   displayName: '',
-}
+});
 
-export type Game = {
-  questions: Array<Question>;
-  leader: Player,
-  players: {
-    [key: string]: string;
-  };
-  state: GameState;
-  currentQuestionIndex: number;
-  startTime: any;
-  timePerQuestion: number;
-  timePerAnswer: number;
-}
-
-export const emptyGame: Game = {
-  questions: [],
-  leader: emptyPlayer,
+export const GameSchema = z.object({
+  questions: z.record(z.string(), QuestionSchema),
+  leader: LeaderSchema,
+  players: z.record(z.string(), z.string()),
+  state: GameStateEnum,
+  currentQuestionIndex: z.number().int().nonnegative(),
+  currentStateStartTime: z.object({seconds: z.number()}),
+  questionAdvancement: QuestionAdvancementEnum,
+  timePerQuestion: TimePerQuestionSchema,
+  timePerAnswer: TimePerAnswerSchema,
+});
+export const emptyGame = GameSchema.parse({
+  questions: {},
+  leader: emptyLeader,
   players: {},
-  state: gameStates.NOT_STARTED,
-  currentQuestionIndex: -1,
-  startTime: '',
-  timePerQuestion: -1,
-  timePerAnswer: -1,
-};
+  state: 'NOT_STARTED',
+  currentQuestionIndex: 0,
+  questionAdvancement: 'AUTOMATIC',
+  currentStateStartTime: {seconds: 0},
+  timePerQuestion: 60,
+  timePerAnswer: 20,
+});
+export type Game = z.infer<typeof GameSchema>;
 
-export type RouteWithCurrentStatus = {
-  name: string;
-  href: string;
-  current: boolean;
-}
+export const TokensSchema = z.object({
+  userToken: z.string(),
+  appCheckToken: z.string(),
+});
+export type Tokens = z.infer<typeof TokensSchema>;

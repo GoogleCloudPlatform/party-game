@@ -14,146 +14,128 @@
  * limitations under the License.
  */
 
-"use client"
+'use client';
 
-import { Game } from "@/app/types";
-import { DocumentReference, Timestamp } from "firebase/firestore";
-import { useEffect, useState } from "react";
-import { timeCalculator } from "../lib/time-calculator";
+import {Game, GameStateUpdate, gameStates, questionAdvancements} from '@/app/types';
+import {DocumentReference, Timestamp} from 'firebase/firestore';
+import {useEffect, useState, useCallback} from 'react';
+import useFirebaseAuthentication from '@/app/hooks/use-firebase-authentication';
+import {nudgeGameAction} from '@/app/actions/nudge-game';
+import {getTokens} from '@/app/lib/client-token-generator';
 
-export default function BorderCountdownTimer({ game, children, gameRef }: { game: Game, children: React.ReactNode, gameRef: DocumentReference }) {
-  const [timeToCountDown, setTimeToCountDown] = useState(game.timePerQuestion);
-  const [displayTime, setDisplayTime] = useState(game.timePerQuestion);
-  const [timeLeft, setTimeLeft] = useState(game.timePerQuestion);
-  const [isSmoothCounting, setIsSmoothCounting] = useState<Boolean>(false);
-  const [countDirection, setCountDirection] = useState<"down" | "up">("down");
+const {MANUAL} = questionAdvancements;
+
+export default function BorderCountdownTimer({game, children, gameRef}: { game: Game, children: React.ReactNode, gameRef: DocumentReference }) {
+  const [timeLeft, setTimeLeft] = useState<number>(game.timePerQuestion);
+  const [localCounter, setLocalCounter] = useState<number>(0);
+  const gameId = gameRef.id;
+  const authUser = useFirebaseAuthentication();
+  const isShowingCorrectAnswers = game.state === gameStates.SHOWING_CORRECT_ANSWERS;
+  const displayTime = MANUAL === game.questionAdvancement && isShowingCorrectAnswers ? 0 : Math.max(Math.floor(timeLeft), 0);
+  const timeToCountDown = isShowingCorrectAnswers ? game.timePerAnswer : game.timePerQuestion;
+  const totalPlayersWhoMadeAGuess = Object.values(game.questions[game.currentQuestionIndex].playerGuesses || []).length;
+
+  const nudgeGame = useCallback(async ({gameId, desiredState}: { gameId: string, desiredState: GameStateUpdate }) => {
+    if (game.state === desiredState.state && game.currentQuestionIndex === desiredState.currentQuestionIndex) return;
+    // all times are in seconds unless noted as `InMillis`
+    const timeElapsedInMillis = Timestamp.now().toMillis() - game.currentStateStartTime.seconds * 1000;
+    const timeElapsed = timeElapsedInMillis / 1000;
+    if (authUser.uid === game.leader.uid && timeElapsed > 2) {
+      const tokens = await getTokens();
+      nudgeGameAction({gameId, desiredState, tokens});
+    }
+  }, [authUser.uid, game.currentQuestionIndex, game.currentStateStartTime.seconds, game.leader.uid, game.state]);
 
   useEffect(() => {
-    // save intervalIdOne to clear the interval when the
+    // all times are in seconds unless noted as `InMillis`
+    const timeElapsedInMillis = Timestamp.now().toMillis() - game.currentStateStartTime.seconds * 1000;
+    const timeElapsed = timeElapsedInMillis / 1000;
+    const isShowingCorrectAnswers = game.state === gameStates.SHOWING_CORRECT_ANSWERS;
+
+    if (isShowingCorrectAnswers) {
+      const timeLeft = game.timePerAnswer - timeElapsed;
+      if (timeLeft < 0 && game.questionAdvancement === questionAdvancements.AUTOMATIC) {
+        const desiredState = {
+          state: gameStates.AWAITING_PLAYER_ANSWERS,
+          currentQuestionIndex: game.currentQuestionIndex + 1,
+        };
+        nudgeGame({gameId, desiredState});
+      }
+      setTimeLeft(timeLeft);
+    } else {
+      const timeLeft = game.timePerQuestion - timeElapsed;
+      if (timeLeft < 0) {
+        const desiredState = {
+          state: gameStates.SHOWING_CORRECT_ANSWERS,
+          currentQuestionIndex: game.currentQuestionIndex,
+        };
+        nudgeGame({gameId, desiredState});
+      }
+      setTimeLeft(timeLeft);
+    }
+  }, [localCounter, game.currentStateStartTime, game.currentQuestionIndex, game.timePerAnswer, game.timePerQuestion, isShowingCorrectAnswers, game.state, game.leader.uid, game.questionAdvancement, authUser.uid, gameId, nudgeGame]);
+
+  useEffect(() => {
+    // save timeoutIdOne to clear the timeout when the
     // component re-renders
     const timeoutIdOne = setTimeout(() => {
+      setLocalCounter(localCounter + 1);
+    }, 1000);
 
-      const {
-        timeLeft,
-        timeToCountDown,
-        displayTime,
-        countDirection,
-      } = timeCalculator({
-        currentTimeInMillis: Timestamp.now().toMillis(),
-        game,
-      });
+    // clear timeout on re-render to avoid memory leaks
+    return () => clearTimeout(timeoutIdOne);
+  }, [localCounter, game.state]);
 
-      setTimeLeft(timeLeft);
-      setTimeToCountDown(timeToCountDown);
-      setDisplayTime(displayTime);
-      setCountDirection(countDirection);
-
-
-      const nudgeGame = async () => {
-        await fetch('/api/nudge-game', {
-          method: 'POST',
-          body: JSON.stringify({ gameId: gameRef.id }),
-        }).catch(error => {
-          console.error({ error })
-        });
-      }
-
-      // nudge every three seconds after time has expired
-      if (Math.floor((timeLeft * 10 % 39)) < -38) {
-        nudgeGame();
-      }
-
-      setTimeout(() => setIsSmoothCounting(timeLeft > -2 && document.visibilityState === 'visible'), 1);
-
-    }, 100);
-
-    // clear interval on re-render to avoid memory leaks
-    return () => { clearTimeout(timeoutIdOne) };
-
-    // including exhaustive deps (specifically `game`) makes the re-render take far too long
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timeLeft]);
+  const limitPercents = (num: number) => Math.max(Math.min(num, 100), 0);
 
   // this is the percent of the entire animation that has completed
   // the `+ 1` allows the animation to target where it "should" be in one second
-  const animationCompletionPercentage = (timeToCountDown - timeLeft + 1) / timeToCountDown * 100;
+  const timeToCountDivisibleByFour = Math.floor(timeToCountDown / 4) * 4;
+  const animationCompletionPercentage = limitPercents((timeToCountDivisibleByFour - displayTime + 1) / timeToCountDivisibleByFour * 100);
 
-  const css = `
-  div.timer {
-    background: none;
-    box-sizing: border-box;
-    padding: 1em 2em;
-    box-shadow: inset 0 0 0 2px #F3F4F6;
-    color: #000000;
-    font-size: inherit;
-    font-weight: 700;
-    position: relative;
-    vertical-align: middle;
-    height: 50vh;
-  }
-  
-  div.timer::before,
-  div.timer::after {
-    box-sizing: inherit;
-    content: "";
-    position: absolute;
-    border: 8px solid transparent;
-  }
-  
-  div.timer.smooth-counting::before,
-  div.timer.smooth-counting::after {
-    transition: height 0.1s linear, width 0.1s linear, border 0.1s linear;
-  }
-  
-  div.timer.down::before {
-    border-top: ${animationCompletionPercentage > 0 ? '8' : '0'}px solid var(--google-cloud-red);
-    border-right: ${animationCompletionPercentage > 25 ? '8' : '0'}px solid var(--google-cloud-blue);
-    top: 0;
-    left: 0;
-    width: ${Math.max(Math.min(animationCompletionPercentage * 4, 100), 0)}%;
-    height: ${Math.max(Math.min(animationCompletionPercentage * 4 - 100, 100), 0)}%;
-  }
-  
-  div.timer.down::after {
-    border-bottom: ${animationCompletionPercentage > 50 ? '8' : '0'}px solid var(--google-cloud-green);
-    border-left: ${animationCompletionPercentage > 75 ? '8' : '0'}px solid var(--google-cloud-yellow);
-    bottom: 0;
-    right: 0;
-    width: ${Math.max(Math.min(animationCompletionPercentage * 4 - 200, 100), 0)}%;
-    height: ${Math.max(Math.min(animationCompletionPercentage * 4 - 300, 100), 0)}%;
-  }
-  
-  div.timer.up::before {
-    border-top: ${animationCompletionPercentage < 100 ? '8' : '0'}px solid var(--google-cloud-red);
-    border-right: ${animationCompletionPercentage < 75 ? '8' : '0'}px solid var(--google-cloud-blue);
-    top: 0;
-    left: 0;
-    width: ${Math.max(Math.min(400 - animationCompletionPercentage * 4, 100), 0)}%;
-    height: ${Math.max(Math.min(300 - animationCompletionPercentage * 4, 100), 0)}%;
-  }
-  
-  div.timer.up::after {
-    border-bottom: ${animationCompletionPercentage < 50 ? '8' : '0'}px solid var(--google-cloud-green);
-    border-left: ${animationCompletionPercentage < 25 ? '8' : '0'}px solid var(--google-cloud-yellow);
-    bottom: 0;
-    right: 0;
-    width: ${Math.max(Math.min(200 - animationCompletionPercentage * 4, 100), 0)}%;
-    height: ${Math.max(Math.min(100 - animationCompletionPercentage * 4, 100), 0)}%;
-  }
-  `;
+  const topBorderPercentage = limitPercents(isShowingCorrectAnswers ? 400 - animationCompletionPercentage * 4 : animationCompletionPercentage * 4);
+  const rightBorderPercentage = limitPercents(isShowingCorrectAnswers ? 300 - animationCompletionPercentage * 4 : animationCompletionPercentage * 4 - 100);
+  const bottomBorderPercentage = limitPercents(isShowingCorrectAnswers ? 200 - animationCompletionPercentage * 4 : animationCompletionPercentage * 4 - 200);
+  const leftBorderPercentage = limitPercents(isShowingCorrectAnswers ? 100 - animationCompletionPercentage * 4 : animationCompletionPercentage * 4 - 300);
+
 
   return (
     <>
-      <div className={`timer ${isSmoothCounting ? 'smooth-counting' : ''} ${countDirection}`}>
-        <div className="float-right -mt-1 -mr-4 ml-1 bg-gray-100 py-1 px-2">
-          {displayTime < 10 && '0'}
-          {displayTime}
+      <div className={`relative p-4 h-[50dvh] overflow-hidden`}>
+        <div className="absolute border-2 border-gray-100 h-full w-full top-0 left-0" />
+        <div className="timer-top-border absolute top-0 left-0 bg-[var(--google-cloud-red)]" style={{height: '8px', width: `${topBorderPercentage}%`, transition: 'width 1s linear'}} />
+        <div className="timer-right-border absolute top-0 right-0 bg-[var(--google-cloud-blue)]" style={{height: `${rightBorderPercentage}%`, width: '8px', transition: 'height 1s linear'}} />
+        <div className="timer-bottom-border absolute bottom-0 right-0 bg-[var(--google-cloud-green)]" style={{height: '8px', width: `${bottomBorderPercentage}%`, transition: 'width 1s linear'}} />
+        <div className="timer-left-border absolute bottom-0 left-0 bg-[var(--google-cloud-yellow)]" style={{height: `${leftBorderPercentage}%`, width: '8px', transition: 'height 1s linear'}} />
+        <div className="h-full w-full border-8 border-transparent">
+          <div className="bg-gray-100 py-1 px-2 float-right relative">
+            {displayTime < 10 && '0'}
+            {displayTime}
+            {authUser.uid === game.leader.uid && (<>
+              <div>
+                {totalPlayersWhoMadeAGuess < 10 && '0'}
+                {totalPlayersWhoMadeAGuess}
+              </div>
+              <div>&nbsp;</div>
+              <div className="my-1 absolute bottom-0">
+                <button
+                  onClick={() => {
+                    const desiredState = {
+                      state: isShowingCorrectAnswers ? gameStates.AWAITING_PLAYER_ANSWERS : gameStates.SHOWING_CORRECT_ANSWERS,
+                      currentQuestionIndex: isShowingCorrectAnswers ? game.currentQuestionIndex + 1 : game.currentQuestionIndex,
+                    };
+                    console.log('clicked');
+                    nudgeGame({gameId, desiredState});
+                  }}
+                >
+                  {'→'}
+                </button>
+              </div>
+            </>)}
+          </div>
+          {children}
         </div>
-        {children}
       </div>
-      <style>
-        {css}
-      </style>
     </>
-  )
+  );
 }

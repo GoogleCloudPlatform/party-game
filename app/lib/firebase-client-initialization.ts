@@ -14,12 +14,27 @@
  * limitations under the License.
  */
 
-import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
-import { getAuth } from "firebase/auth";
-import { firebaseConfig } from "@/app/lib/firebase-config";
+'use client';
+
+import {initializeApp} from 'firebase/app';
+import {getFirestore} from 'firebase/firestore';
+import {getAuth} from 'firebase/auth';
+import {firebaseConfig} from '@/app/lib/firebase-config';
+import {AppCheck, initializeAppCheck, ReCaptchaEnterpriseProvider} from 'firebase/app-check';
 
 // Initialize Firebase
 export const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
+export let appCheck: AppCheck;
+
+if (typeof window !== 'undefined') {
+  // Create a ReCaptchaEnterpriseProvider instance using your reCAPTCHA Enterprise
+  // site key and pass it to initializeAppCheck().
+  // @ts-expect-error
+  if (location.hostname === 'localhost') self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+  appCheck = initializeAppCheck(app, {
+    provider: new ReCaptchaEnterpriseProvider('6Lc3JP8nAAAAAPrX4s-HwUT8L-k_aMtbKGhJEq_0'),
+    isTokenAutoRefreshEnabled: true, // Set to true to allow auto-refresh.
+  });
+}

@@ -14,28 +14,30 @@
  * limitations under the License.
  */
 
-import { useEffect, useState } from "react";
-import { db } from "@/app/lib/firebase-client-initialization"
-import { gameStates } from "@/app/types";
-import { DocumentReference, collection, onSnapshot, query, where } from "firebase/firestore";
+import {useEffect, useState} from 'react';
+import {db} from '@/app/lib/firebase-client-initialization';
+import {gameStates} from '@/app/types';
+import {DocumentReference, collection, onSnapshot, query, where} from 'firebase/firestore';
 
 
 const useActiveGameList = () => {
   const [activeGameList, setActiveGameList] = useState<DocumentReference[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    const q = query(collection(db, "games"), where("state", "!=", gameStates.GAME_OVER));
+    const q = query(collection(db, 'games'), where('state', '!=', gameStates.GAME_OVER));
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const games: DocumentReference[] = [];
       querySnapshot.forEach((doc) => {
         games.push(doc.ref);
       });
       setActiveGameList(games);
+      setLoading(false);
     });
     return unsubscribe;
-  }, [])
+  }, []);
 
-  return { activeGameList }
-}
+  return {activeGameList, loading};
+};
 
 export default useActiveGameList;
