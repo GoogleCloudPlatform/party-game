@@ -15,7 +15,7 @@
  */
 
 export const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || 'AIzaSyBr0i2bC9kdsdRVh-9pQ5yFOjxpweiTJrQ',
-  projectId: process.env.NEXT_PUBLIC_GOOGLE_CLOUD_PROJECT || 'cloud-quiz-next',
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || '1:406096902405:web:7311c44c3657568af1df6c',
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || 'AIzaSyBkNp5U0uXGMrtmevlomHEg3hzIpEwsn5Y',
+  projectId: process.env.NEXT_PUBLIC_GOOGLE_CLOUD_PROJECT || 'cloud-party-game',
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || '1:235679571237:web:769a1990adaa99b5d1cecc',
 };
